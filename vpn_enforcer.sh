@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# VPN Enforcer V2 - Robust & Event-Driven
+# 
+# This script monitors network state changes using scutil and enforces
+# firewall rules when the VPN is not connected.
+
 # Configuration
 CONFIG_FILE="/etc/vpn_enforcer.conf"
 
@@ -14,8 +19,19 @@ fi
 # Constants
 PF_ANCHOR_NAME="com.user.vpnenforcer"
 PF_ANCHOR_FILE="/etc/pf.anchors/com.user.vpnenforcer"
-BYPASS_FLAG_FILE="/tmp/vpn_enforcer_bypass"
+LOG_FILE="/var/log/vpn_enforcer.log"
+SECURE_DIR="/var/run/vpnenforcer"
+BYPASS_FLAG_FILE="$SECURE_DIR/bypass.flag"
 BYPASS_DURATION=300 # 5 minutes
+
+# State tracking
+CURRENT_STATE="UNKNOWN"
+
+# logging function
+log_message() {
+    local message="$1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $message" >> "$LOG_FILE"
+}
 
 # Function to check if VPN is connected
 check_vpn() {
@@ -29,12 +45,13 @@ check_vpn() {
 
 # Function to enable restrictive firewall rules
 enable_firewall() {
-    echo "VPN DOWN. Enabling firewall restrictions..."
+    if [ "$CURRENT_STATE" == "BLOCKED" ]; then return; fi
+    
+    log_message "Action: Enabling firewall restrictions (VPN DOWN)..."
     
     # Create the anchor file if it doesn't exist
     if [ ! -f "$PF_ANCHOR_FILE" ]; then
-        echo "Creating PF anchor file..."
-        # Block everything by default on physical interfaces, allow local, allow VPN server
+        log_message "Creating PF anchor file..."
         cat <<EOF > "$PF_ANCHOR_FILE"
 # Macros
 vpn_server = "$VPN_SERVER_IP"
@@ -63,12 +80,20 @@ EOF
     # Load the anchor
     pfctl -a "$PF_ANCHOR_NAME" -f "$PF_ANCHOR_FILE" 2>/dev/null
     pfctl -e 2>/dev/null # Ensure PF is enabled
+    
+    CURRENT_STATE="BLOCKED"
+    log_message "State changed to: BLOCKED"
 }
 
 # Function to disable restrictive firewall rules
 disable_firewall() {
-    echo "VPN UP. Disabling firewall restrictions..."
+    if [ "$CURRENT_STATE" == "ALLOWED" ]; then return; fi
+
+    log_message "Action: Disabling firewall restrictions (VPN UP or BYPASS)..."
     pfctl -a "$PF_ANCHOR_NAME" -F all 2>/dev/null
+    
+    CURRENT_STATE="ALLOWED"
+    log_message "State changed to: ALLOWED"
 }
 
 # Function to check bypass status
@@ -80,10 +105,9 @@ check_bypass() {
         age=$((current_time - file_time))
         
         if [ "$age" -lt "$BYPASS_DURATION" ]; then
-            echo "Bypass active ($((BYPASS_DURATION - age))s remaining)."
             return 0 # Bypass IS active
         else
-            echo "Bypass expired."
+            log_message "Bypass expired (auto-cleanup)."
             rm "$BYPASS_FLAG_FILE"
             return 1 # Bypass is NOT active
         fi
@@ -91,8 +115,8 @@ check_bypass() {
     return 1 # Bypass is NOT active
 }
 
-# Main Loop
-while true; do
+# Main enforcement logic
+evaluate_state() {
     if check_bypass; then
         disable_firewall
     elif check_vpn; then
@@ -100,5 +124,42 @@ while true; do
     else
         enable_firewall
     fi
+}
+
+# Cleanup on exit (Fail-Closed default, but logs exit)
+cleanup() {
+    log_message "Daemon stopping. Ensuring firewall is ACTIVE (Fail-Closed)..."
+    enable_firewall
+    exit 0
+}
+
+# Trap signals
+trap cleanup SIGTERM SIGINT
+
+log_message "VPN Enforcer V2 started."
+mkdir -p "$SECURE_DIR"
+chmod 700 "$SECURE_DIR"
+
+# Initial check
+evaluate_state
+
+# Monitor loop using scutil
+# We watch for changes in IPv4 configuration, which happens on connect/disconnect
+log_message "Starting event monitoring..."
+
+# Using coprocess to read output of scutil --monitor
+# It outputs "Key ..." when changes happen.
+# We also wake up every 10 seconds just in case of missed events or to check bypass expiry.
+( scutil --monitor State:/Network/Global/IPv4 ) | while read -r line; do
+    evaluate_state
+done &
+
+PID_SCUTIL=$!
+
+# Main loop to check bypass expiry (since scutil won't trigger on file time)
+while true; do
+    evaluate_state
     sleep 5
 done
+
+kill $PID_SCUTIL

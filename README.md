@@ -10,10 +10,11 @@ If the VPN drops, all internet traffic (except to the VPN server itself) is imme
 
 ## Features
 
--   **Always-On Protection**: Runs as a system daemon (`launchd`) and starts automatically on boot.
--   **Instant Blocking**: Uses macOS Packet Filter (`pf`) to block traffic the moment the VPN disconnects.
--   **VPN Exception**: Automatically allows traffic to your specific VPN server IP so you can reconnect.
--   **Emergency Bypass**: Includes a password-protected tool to temporarily allow internet access without the VPN (e.g., for captive portals or troubleshooting).
+-   **Enterprise-Grade Reliability**: Version 2 uses event-driven monitoring (`scutil`) for instant reaction to network changes (< 1 second).
+-   **Secure Bypass**: Password-protected bypass mechanism stored in a secure system directory to prevent tampering.
+-   **Fail-Safe Design**: Defaults to blocking traffic if the service is stopped or fails.
+-   **Comprehensive Logging**: Detailed activity logs at `/var/log/vpn_enforcer.log`.
+-   **Always-On Protection**: Runs as a system daemon and starts automatically on boot.
 
 ## Installation
 
@@ -33,10 +34,11 @@ If the VPN drops, all internet traffic (except to the VPN server itself) is imme
 
 ## Usage
 
-### continuous Protection
-Once installed, the tool runs in the background. You don't need to do anything.
+### Continuous Protection
+Once installed, the tool runs in the background.
 -   **VPN Connected**: Internet works normally.
--   **VPN Disconnected**: Internet is blocked.
+-   **VPN Disconnected**: Internet is blocked immediately.
+-   **Logs**: Check `/var/log/vpn_enforcer.log` for activity.
 
 ### Emergency Bypass
 To temporarily access the internet without the VPN:
@@ -46,30 +48,26 @@ To temporarily access the internet without the VPN:
     ```bash
     sudo vpn_control.sh
     ```
-3.  Enter the bypass password you set during installation.
-4.  You will key **5 minutes** of internet access. You can re-run the command to extend the time.
-
-## Technical Details
-
--   **Backend**: A bash script (`vpn_enforcer.sh`) running as a daemon.
--   **Firewall**: Uses `pfctl` (Packet Filter) to manage rules.
--   **Persistence**: A LaunchDaemon (`com.user.vpnenforcer.plist`) ensures the script restarts if killed and runs on boot.
+3.  Enter the bypass password.
+4.  You will get **5 minutes** of internet access.
 
 ## Uninstallation
 
-To remove the tool and restore default network settings, run the following commands:
+To completely remove the tool and restore default network settings, run the uninstaller script:
 
 ```bash
-sudo launchctl unload /Library/LaunchDaemons/com.user.vpnenforcer.plist
-sudo rm /Library/LaunchDaemons/com.user.vpnenforcer.plist
-sudo rm /usr/local/bin/vpn_enforcer.sh
-sudo rm /usr/local/bin/vpn_control.sh
-sudo rm /etc/vpn_enforcer.conf
-sudo rm /etc/pf.anchors/com.user.vpnenforcer
-
-# Reset Firewall rules
-sudo pfctl -a com.user.vpnenforcer -F all
+chmod +x uninstall.sh
+sudo ./uninstall.sh
 ```
+
+This will remove all components, including logs and configuration files.
+
+## Technical Details
+
+-   **Backend**: `vpn_enforcer.sh` monitors `State:/Network/Global/IPv4` changes using `scutil`.
+-   **Security**: Bypass flag stored in `/var/run/vpnenforcer` (root-only access).
+-   **Firewall**: Uses `pfctl` (Packet Filter) to manage rules.
+
 
 ## Disclaimer
 This tool modifies your system's firewall rules. Use at your own risk. Ensure you have the correct VPN server IP, or you may lock yourself out of the internet until you use the bypass or uninstall the tool.
