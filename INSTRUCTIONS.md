@@ -1,72 +1,43 @@
-# VPN Enforcer - Instructions
-
-This document guides you through the installation, usage, and uninstallation of the VPN Enforcer tool.
-
-## Prerequisites
-
--   macOS (tested on recent versions)
--   Root privileges (via `sudo`)
--   Knowledge of your VPN Server IP address
+# VPN Enforcer V3 - Quick Start
 
 ## Installation
 
-1.  **Open Terminal** and navigate to this folder:
-    ```bash
-    cd /Users/snirkadosh/WebApps/MacVpn
-    ```
+```bash
+cd /Users/snirkadosh/WebApps/MacVpn
+chmod +x setup.sh uninstall.sh
+sudo ./setup.sh
+```
 
-2.  **Make the setup script executable**:
-    ```bash
-    chmod +x setup.sh
-    ```
+Follow the prompts to configure your VPN server, interface, and bypass password.
 
-3.  **Run the setup script**:
-    ```bash
-    sudo ./setup.sh
-    ```
+## Verify It Works
 
-4.  **Follow the on-screen prompts**:
-    -   **VPN Server IP**: Enter the IP address of the VPN server you need to connect to.
-    -   **VPN Interface**: Press Enter to use the default `utun` (or specify `utun0`, `utun1` if known).
-    -   **Bypass Password**: Set a secure password. This is required to temporarily disable the internet block if you need to access the internet without the VPN.
+```bash
+# Check status
+sudo vpn_control.sh status
 
-## How it Works
+# Run diagnostics
+sudo vpn_control.sh test
+```
 
--   **Automatic Blocking**: When the computer starts, or when the VPN disconnects, the tool automatically blocks all outgoing internet traffic (except to the VPN server itself).
--   **VPN Connection**: Once the VPN connects, the tool detects it and automatically opens internet access through the VPN.
+Then disconnect your VPN - browsing should fail immediately. Reconnect - it should work again.
 
-## Bypass Mode (Emergency Internet Access)
+## Daily Commands
 
-If you need to access the internet *without* the VPN (e.g., to login to a captive portal, or if the VPN server is down):
+| Command | What it does |
+|---------|-------------|
+| `sudo vpn_control.sh status` | Live status dashboard |
+| `sudo vpn_control.sh bypass` | Temporary internet without VPN |
+| `sudo vpn_control.sh logs` | View recent activity |
+| `sudo vpn_control.sh test` | Full system diagnostics |
+| `sudo vpn_control.sh restart` | Restart the daemon |
 
-1.  Run the control script:
-    ```bash
-    sudo vpn_control.sh
-    ```
-    *(Note: This usage assumes the script is in your path. If not found, run `/usr/local/bin/vpn_control.sh`)*
+## Upgrading from V2
 
-2.  Enter the **Bypass Password** you set during installation.
-3.  If correct, you will have internet access for **5 minutes**. You can run the command again to extend the time.
+Run `sudo ./setup.sh` - it detects V2 and offers to upgrade while preserving your existing configuration.
 
-## Verification
+## Uninstall
 
-To verify the tool is working:
-1.  **Disconnect VPN**: Try to browse a website. It should fail.
-2.  **Connect VPN**: Browse a website. It should work.
-
-## Uninstallation
-
-To completely remove the tool and restore normal settings:
-
-1.  Run the following commands in Terminal:
-    ```bash
-    sudo launchctl unload /Library/LaunchDaemons/com.user.vpnenforcer.plist
-    sudo rm /Library/LaunchDaemons/com.user.vpnenforcer.plist
-    sudo rm /usr/local/bin/vpn_enforcer.sh
-    sudo rm /usr/local/bin/vpn_control.sh
-    sudo rm /etc/vpn_enforcer.conf
-    sudo rm /etc/pf.anchors/com.user.vpnenforcer
-    
-    # Reset Firewall rules
-    sudo pfctl -a com.user.vpnenforcer -F all
-    ```
+```bash
+sudo ./uninstall.sh
+```
